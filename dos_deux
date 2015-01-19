@@ -1,0 +1,42 @@
+#!/usr/bin/env ruby
+
+require 'yaml'
+require 'rubygems'
+require 'rio'
+require 'json'
+# Thanks to: http://www.railstips.org/blog/archives/2008/05/11/todos-on-your-desktop/
+# for the initial draft of this program
+require 'active_support/time'
+require 'uri'
+
+def todoist_query(*args)
+  token   = args.pop
+  queries = %Q{["#{args.flatten.join('","')}"]}
+  url     = "http://todoist.com/API/query?queries=#{queries}&token=#{token}"
+  JSON.parse(rio(URI.encode(url)).read)
+end
+
+lines, now   = [], Time.now
+config = YAML::load(rio(File.join(ENV['HOME'], '.todoist')).read)
+format = '%Y-%m-%dT%H:%M'
+#days   = (now..now.advance(:days => config['days'] || 3)).step(1.day)
+start_day   = now.to_date
+end_day =  now.advance(:days => config['days'] || 3).to_date
+days = []
+day = start_day
+#puts "looping: #{day.inspect} <= #{end_day.inspect}"
+while day <= end_day
+  days << day.dup
+  day = day + 1.day #.advance(:days => 1)
+  #puts "@ #{day.inspect}"
+end
+#puts "days: #{days.inspect}"
+
+todoist_query("overdue", days.map { |d| d.strftime(format) }, config['token']).each do |type|
+  next if type['data'].size == 0
+  lines << (type['type'] == 'date' ? Time.parse(type['query']).strftime('%b %d').gsub(/\s0/, ' ').upcase : type['type'])
+  type['data'].each { |i| lines << " - #{i['content']}" }
+  lines << "\n"
+end
+
+puts lines
